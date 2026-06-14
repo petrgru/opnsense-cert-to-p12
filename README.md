@@ -170,7 +170,6 @@ underscores, special characters are removed.
 |------|---------|
 | 0 | Success |
 | 1 | Certificate not found in config.xml or ACME filesystem |
-| 2 | Missing required dependency (e.g., openssl) |
 | 3 | OpenSSL error or cert/key mismatch |
 | 4 | Invalid or missing argument |
 | 5 | Output file exists and `--force` not used |

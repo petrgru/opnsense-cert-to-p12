@@ -277,11 +277,15 @@ ${OPENSSL} x509 -in "$PEM_CERT" -noout -subject -dates >/dev/null 2>&1 || die "I
 ${OPENSSL} pkey -in "$PEM_KEY" -noout >/dev/null 2>&1 || \
     ${OPENSSL} rsa -in "$PEM_KEY" -noout >/dev/null 2>&1 || die "Invalid key PEM" 3
 
-cert_mod=$(${OPENSSL} x509 -in "$PEM_CERT" -noout -modulus | ${OPENSSL} md5)
-key_mod=$(${OPENSSL} pkey -in "$PEM_KEY" -noout -pubout 2>/dev/null | ${OPENSSL} md5 2>/dev/null || \
-          ${OPENSSL} rsa -in "$PEM_KEY" -noout -modulus | ${OPENSSL} md5)
-if [ "$cert_mod" != "$key_mod" ]; then
-    warn "Certificate and private key modulus mismatch!"
+# Verify certificate and private key match by comparing their public keys.
+# This works for both RSA and EC keys (unlike modulus comparison which only
+# works for RSA and compares hex strings against PEM hashes).
+cert_pubkey=$(${OPENSSL} x509 -in "$PEM_CERT" -noout -pubkey 2>/dev/null) || \
+    die "Unable to read certificate public key" 3
+key_pubkey=$(${OPENSSL} pkey -in "$PEM_KEY" -pubout 2>/dev/null) || \
+    die "Unable to read private key public key" 3
+if [ "$cert_pubkey" != "$key_pubkey" ]; then
+    warn "Certificate and private key do not match!"
     [ "$FORCE" -eq 0 ] && die "Use --force to override." 3
 fi
 
