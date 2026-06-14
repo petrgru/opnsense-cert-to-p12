@@ -2,7 +2,7 @@
 # install.sh — One-command installer for OPNsense Certificate-to-P12 Exporter
 #
 # Usage:
-#   curl -sSL https://raw.githubusercontent.com/petrgru/opnsense-cert-to-p12/main/install.sh | sh
+#   curl -sSL https://raw.githubusercontent.com/petrgru/opnsense-cert-to-p12/master/install.sh | sh
 #
 # This script downloads the cert-to-p12 exporter files from GitHub and
 # installs them into the correct OPNsense paths.
@@ -33,11 +33,17 @@ download() {
     dest="$2"
     echo "  ↓ $url"
     mkdir -p "$(dirname "$dest")"
-    curl -sSL "$url" -o "$dest" || {
-        echo "ERROR: Failed to download $url" >&2
+    # Use --fail so curl returns non-zero on HTTP 404/500 (not just network errors)
+    curl -sSL --fail "$url" -o "$dest" || {
+        echo "ERROR: Failed to download $url (HTTP error)" >&2
         exit 1
     }
-    echo "    → $dest"
+    # Verify the file starts with the expected shebang (detect corrupted downloads)
+    if [ "$(head -c 2 "$dest" 2>/dev/null)" != "#!" ] && [ "$(head -c 5 "$dest" 2>/dev/null)" != "<?php" ]; then
+        echo "ERROR: Downloaded file $dest does not look valid (wrong content)" >&2
+        exit 1
+    fi
+    echo "    → $dest ($(wc -c < "$dest") bytes)"
 }
 
 echo "=========================================="
