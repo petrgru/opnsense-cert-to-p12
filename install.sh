@@ -10,7 +10,7 @@
 set -e
 
 REPO="petrgru/opnsense-cert-to-p12"
-BRANCH="main"
+BRANCH="master"
 BASE_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}"
 
 if [ "$(id -u)" -ne 0 ]; then
