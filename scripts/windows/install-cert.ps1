@@ -89,6 +89,40 @@ function Parse-EnvFile {
 
 # ---------------------------------------------------------------------------
 # Download a file from OPNsense with Basic Auth
+#
+# PS 5.1 note: we bypass SSL validation using a compiled .NET method
+# because PowerShell ScriptBlocks ({ $true }) need a Runspace and fail on
+# background threads. A proper .NET delegate avoids this entirely.
+# ---------------------------------------------------------------------------
+
+function Set-TlsBypass_PS51 {
+    try {
+        $typeName = 'OmoSslValidator'
+        $existing = [System.Management.Automation.PSTypeName]$typeName
+        if (-not $existing.Type) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
+public static class OmoSslValidator {
+    public static bool Validate(object sender, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors) {
+        return true;
+    }
+}
+'@ -ErrorAction Stop
+        }
+        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = [System.Net.Security.RemoteCertificateValidationCallback]OmoSslValidator.Validate
+    } catch {
+        Write-Warn "Could not install SSL bypass via Add-Type."
+        Write-Warn "Falling back to ScriptBlock method (may fail on some systems)."
+        Write-Warn "If you see a 'Runspace' error, upgrade to PowerShell 7 or add"
+        Write-Warn "the OPNsense CA to Windows Trusted Root store and set SKIP_TLS_VERIFY=false."
+        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Download a file from OPNsense with Basic Auth
 # ---------------------------------------------------------------------------
 
 function Invoke-OPNsenseDownload {
@@ -103,11 +137,8 @@ function Invoke-OPNsenseDownload {
 
     if ($SkipTlsVerify) {
         Write-Warn "TLS certificate validation is DISABLED."
-        if ($PSVersionTable.PSVersion.Major -ge 6) {
-            # PowerShell Core 6+ supports -SkipCertificateCheck natively
-        } else {
-            # Windows PowerShell 5.1 — global callback (not thread-safe)
-            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+        if ($PSVersionTable.PSVersion.Major -lt 6) {
+            Set-TlsBypass_PS51
         }
     }
 
@@ -125,8 +156,6 @@ function Invoke-OPNsenseDownload {
         }
         if ($PSVersionTable.PSVersion.Major -ge 6) {
             $params['SkipCertificateCheck'] = $SkipTlsVerify
-        } elseif ($SkipTlsVerify) {
-            # Fallback already handled above via ServicePointManager
         }
 
         Invoke-WebRequest @params
