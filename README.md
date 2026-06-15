@@ -70,7 +70,33 @@ The script searches for certificates in three phases:
 
 ---
 
-## Installation
+## Quick Install (one-liner)
+
+Run this directly on your OPNsense firewall (as root or via `sudo`):
+
+```bash
+curl -sSL https://raw.githubusercontent.com/petrgru/opnsense-cert-to-p12/master/install.sh | sh
+```
+
+> **Security note:** Piping `curl` to `sh` is convenient, but you should
+> [review the installer script](https://github.com/petrgru/opnsense-cert-to-p12/blob/master/install.sh)
+> first if you have any concerns. The script:
+> - Verifies it is running as root.
+> - Downloads each file from GitHub with HTTP error checking.
+> - Validates each downloaded file has the expected content type.
+> - Installs files into `/usr/local/opnsense/scripts/cert-to-p12/` and related paths.
+> - Restarts `configd` to register the new actions.
+>
+> After installation, verify with:
+>
+> ```bash
+> cert-to-p12.sh --cert webgui
+> configctl cert-to-p12 describe
+> ```
+
+---
+
+## Manual Installation
 
 ### 1. Copy files to OPNsense
 
