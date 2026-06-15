@@ -163,13 +163,21 @@ _select_acme_cert() {
     CHAIN_FILE="${_cert_dir}chain.pem"
     [ -f "$CHAIN_FILE" ] || CHAIN_FILE=""
 
-    CERT_NAME="$_uuid"
+    # Use CN as human-readable name (fallback: domain, then uuid)
+    if [ -n "$_cn" ] && [ "$_cn" != "(no CN)" ]; then
+        CERT_NAME="$_cn"
+    elif [ -n "$_domain" ]; then
+        CERT_NAME="$_domain"
+    else
+        CERT_NAME="$_uuid"
+    fi
     CERT_REFID="$_uuid"
 
     log "Found ACME certificate: $_uuid"
     log "  CN:        $_cn"
     log "  SANs:      $(echo "$_sans" | tr '\n' ' ')"
     [ -n "$_domain" ] && log "  Domain:    $_domain"
+    log "  File name: ${CERT_NAME}.p12"
     return 0
 }
 
