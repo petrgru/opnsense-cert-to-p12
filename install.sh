@@ -72,7 +72,14 @@ echo "[3/4] Installing configd action..."
 download "${BASE_URL}/usr/local/opnsense/service/conf/actions.d/actions_cert-to-p12.conf" "$CONFIGD_DST"
 echo ""
 
-echo "[4/4] Registering configd action..."
+echo "[4/4] Creating export directory for HTTP API..."
+mkdir -p /var/cert-export
+chown root:www /var/cert-export 2>/dev/null || true
+chmod 750 /var/cert-export 2>/dev/null || true
+echo "       ✓ /var/cert-export (www-readable)"
+echo ""
+
+echo "[5/5] Registering configd action..."
 if service configd restart 2>/dev/null; then
     echo "       ✓ configd restarted"
 else

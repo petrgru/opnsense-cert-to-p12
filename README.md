@@ -50,7 +50,7 @@ The script searches for certificates in three phases:
                              │                                │
   cron (daily) ─────────────▶│  cert-to-p12.sh               │
                              │    │                           │
-  ACME client (on renew) ───▶│    │  ┌───► /root/cert-export/ │
+  ACME client (on renew) ───▶│    │  ┌───► /var/cert-export/  │
                              │    │  │     *.p12              │
                              │    │  │     *.password         │
                              │    └──┘                        │
@@ -184,7 +184,7 @@ You should see the available actions listed.
 
 #### Output
 
-The script creates two files in the output directory (default: `/root/cert-export/`):
+The script creates two files in the output directory (default: `/var/cert-export/`):
 
 - `<sanitized_name>.p12` — The PKCS#12 file
 - `<sanitized_name>.password` — The password (auto-generated or the one you supplied)
@@ -236,7 +236,7 @@ curl -u "${API_KEY}:${API_SECRET}" \
     --output "/etc/ssl/${CERT_NAME}.p12"
 
 # Read the password from the OPNsense (requires SSH access)
-PASSWORD=$(ssh root@opnsense "cat /root/cert-export/${CERT_NAME}.password")
+PASSWORD=$(ssh root@opnsense "cat /var/cert-export/${CERT_NAME}.password")
 echo "Password: ${PASSWORD}"
 ```
 
@@ -441,7 +441,7 @@ For the configd action, use the **legacy** variant:
 | `/var/etc/acme-client/keys/<uuid>/` | ACME client private keys (private.key) |
 | `/var/etc/acme-client/home/<uuid_or_domain>/` | ACME client working directory |
 | `/var/etc/acme-client/configs/<uuid>.conf` | ACME client config (contains `CERT_DOMAIN`) |
-| `/root/cert-export/` | Default .p12 output directory (this project) |
+| `/var/cert-export/` | Default .p12 output directory (this project) |
 | `/usr/local/www/cert-export/` | HTTP API download endpoint |
 
 ### Where this project's files live
@@ -461,7 +461,7 @@ For the configd action, use the **legacy** variant:
 The .p12 file **contains the private key**. Treat it with the same care as
 any TLS private key material:
 
-- The output directory (`/root/cert-export/`) is readable only by `root`.
+- The output directory (`/var/cert-export/`) is readable only by `root` and the web server group (`www`).
 - The password file is `chmod 600`.
 - The HTTP API endpoint requires a valid OPNsense API key/secret to access.
 - The API endpoint does NOT serve directory listings.
@@ -573,11 +573,13 @@ tail -f /var/log/lighttpd/error.log
 
 Common issues:
 - The PHP script has syntax errors — run `php -l /usr/local/www/cert-export/index.php`
-- The `/root/cert-export/` directory doesn't exist or is not readable by the
-  web server user (`www`). Note: lighttpd runs as `www` but `/root` is
-  typically not accessible. The script uses a workaround by reading via PHP.
-- If PHP cannot access `/root/cert-export/`, change the path in
-  `cert-export.php` or run cert-to-p12.sh with `--outdir /tmp/cert-export`.
+- The `/var/cert-export/` directory doesn't exist or is not readable by the
+  web server user (`www`). Run `ls -la /var/cert-export/` to check.
+  The directory should be owned by `root:www` with permissions `750`.
+  Fix with: `chown root:www /var/cert-export && chmod 750 /var/cert-export`
+- If you have existing exports in `/root/cert-export/`, the PHP handler will
+  automatically fall back to that path. To make them accessible to `www`:
+  `chmod 640 /root/cert-export/* && chown root:www /root/cert-export/*`
 
 ---
 
@@ -595,7 +597,7 @@ service configd restart
 rm -rf /usr/local/www/cert-export
 
 # Remove exported files (careful!)
-rm -rf /root/cert-export
+rm -rf /var/cert-export
 ```
 
 ---

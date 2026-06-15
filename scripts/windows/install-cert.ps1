@@ -132,9 +132,22 @@ function Invoke-OPNsenseDownload {
             }
         }
 
-        # curl failed - try to extract HTTP status from error output
+        # curl failed - try to read the server response body for a detailed error
+        $errorBody = ""
+        if (Test-Path $OutFile) {
+            $errorBody = Get-Content $OutFile -Raw -ErrorAction SilentlyContinue
+            if ($errorBody) { $errorBody = $errorBody.Trim() }
+        }
+
         if ($exitCode -eq 22) {
-            Write-ErrorAndExit "curl: HTTP error (check API_KEY, API_SECRET, and cert name)."
+            # The server returned an HTTP error (4xx/5xx). Try to extract a JSON error
+            if ($errorBody -match '{"error":\s*"([^"]+)"') {
+                Write-ErrorAndExit "Server error: $($matches[1])"
+            } elseif ($errorBody) {
+                Write-ErrorAndExit "Server returned HTTP error with body: $errorBody"
+            } else {
+                Write-ErrorAndExit "Server returned HTTP error (check API_KEY, API_SECRET, and cert name)."
+            }
         } elseif ($exitCode -eq 6) {
             Write-ErrorAndExit "curl: Could not resolve host - check OPNSENSE_URL."
         } elseif ($exitCode -eq 7) {
@@ -179,11 +192,28 @@ function Invoke-OPNsenseDownload {
         if ($response) {
             $statusCode = [int]$response.StatusCode
             $statusDesc = $response.StatusDescription
+
+            # Try to read response body for a server-side error message
+            $errorBody = ""
+            try {
+                $reader = New-Object System.IO.StreamReader($response.GetResponseStream())
+                $errorBody = $reader.ReadToEnd().Trim()
+                $reader.Close()
+            } catch { }
+
             switch ($statusCode) {
                 401 { Write-ErrorAndExit "Authentication failed (401). Check API_KEY and API_SECRET in .env." }
                 403 { Write-ErrorAndExit "Access denied (403). Verify API_KEY and API_SECRET are correct." }
                 404 { Write-ErrorAndExit "Certificate not found on server (404). Run cert-to-p12.sh on OPNsense first." }
-                default { Write-ErrorAndExit "HTTP $statusCode $statusDesc - $Url" }
+                default {
+                    if ($errorBody -match '{"error":\s*"([^"]+)"') {
+                        Write-ErrorAndExit "Server error ($statusCode): $($matches[1])"
+                    } elseif ($errorBody) {
+                        Write-ErrorAndExit "HTTP $statusCode $statusDesc - $errorBody"
+                    } else {
+                        Write-ErrorAndExit "HTTP $statusCode $statusDesc - $Url"
+                    }
+                }
             }
         } else {
             # No HTTP response object - network error, DNS failure, timeout, SSL handshake failure

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-OUTDIR="/root/cert-export"
+OUTDIR="/var/cert-export"
 P12_PASSWORD=""
 CERT_SPEC=""
 USE_LEGACY=0
@@ -295,6 +295,9 @@ if [ -z "$P12_PASSWORD" ]; then
 fi
 
 mkdir -p "$OUTDIR"
+# Make output dir accessible to web server user (www) for HTTP API download
+chown root:www "$OUTDIR" 2>/dev/null || true
+chmod 750 "$OUTDIR" 2>/dev/null || true
 sanitized_name=$(echo "$CERT_NAME" | sed 's/[^a-zA-Z0-9._-]/_/g' | sed 's/__*/_/g; s/^_//; s/_$//')
 [ -z "$sanitized_name" ] && sanitized_name="certificate"
 P12_FILE="${OUTDIR}/${sanitized_name}.p12"
@@ -371,7 +374,9 @@ ${OPENSSL} pkcs12 -in "$P12_FILE" -passin pass:"$P12_PASSWORD" -noout >/dev/null
     warn "Generated .p12 failed verification"
 
 echo "$P12_PASSWORD" > "$PASSWORD_FILE"
-chmod 600 "$PASSWORD_FILE" "$P12_FILE" 2>/dev/null || true
+# www group needs read access so the PHP HTTP handler can serve these files
+chmod 640 "$PASSWORD_FILE" "$P12_FILE" 2>/dev/null || true
+chown root:www "$PASSWORD_FILE" "$P12_FILE" 2>/dev/null || true
 
 subject=$(${OPENSSL} x509 -in "$PEM_CERT" -noout -subject)
 valid_from=$(${OPENSSL} x509 -in "$PEM_CERT" -noout -startdate | sed 's/notBefore=//')

@@ -26,7 +26,11 @@
  *   4xx — JSON error
  */
 
-$exportDir = '/root/cert-export';
+// Try www-accessible paths first, fall back to /root/ for backward compat
+$exportDir = '/var/cert-export';
+if (!is_dir($exportDir) && is_dir('/root/cert-export')) {
+    $exportDir = '/root/cert-export';
+}
 $configXml = '/conf/config.xml';
 
 function jsonError($msg, $code) {
