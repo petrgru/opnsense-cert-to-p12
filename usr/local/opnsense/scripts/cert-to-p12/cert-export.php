@@ -17,8 +17,12 @@
  *   Or with query-string params (less secure, HTTPS only):
  *   curl "https://opnsense/cert-export/?cert=<name>&apikey=<key>&apisecret=<secret>"
  *
+ *   To download the corresponding password file instead:
+ *   curl -u "<api_key>:<api_secret>" \
+ *     "https://opnsense/cert-export/?cert=<name>&password=1"
+ *
  * RESPONSE:
- *   200 — .p12 file as application/x-pkcs12 binary
+ *   200 — .p12 file as application/x-pkcs12 binary (or text/plain for password)
  *   4xx — JSON error
  */
 
@@ -97,6 +101,28 @@ $sanitized = preg_replace('/__+/', '_', $sanitized);
 $sanitized = trim($sanitized, '_');
 if (empty($sanitized)) {
     jsonError('Invalid certificate name.', 400);
+}
+
+// Support serving the .password file alongside the .p12
+$servePassword = ($_GET['password'] ?? '') === '1';
+
+if ($servePassword) {
+    $passwordFile = $exportDir . '/' . $sanitized . '.password';
+    if (!file_exists($passwordFile)) {
+        jsonError("Password file not found: {$sanitized}.password. Run cert-to-p12.sh first.", 404);
+    }
+    $fileSize = filesize($passwordFile);
+    if ($fileSize === false || $fileSize === 0) {
+        jsonError('Password file is empty or unreadable.', 500);
+    }
+    header('Content-Type: text/plain; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $sanitized . '.password"');
+    header('Content-Length: ' . $fileSize);
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+    readfile($passwordFile);
+    exit;
 }
 
 $p12File = $exportDir . '/' . $sanitized . '.p12';

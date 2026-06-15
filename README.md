@@ -67,6 +67,8 @@ The script searches for certificates in three phases:
 | `usr/local/opnsense/scripts/cert-to-p12/cert-to-p12.sh` | Main export script |
 | `usr/local/opnsense/scripts/cert-to-p12/cert-export.php` | HTTP API download handler |
 | `usr/local/opnsense/service/conf/actions.d/actions_cert-to-p12.conf` | Configd action definition |
+| `scripts/windows/install-cert.ps1` | PowerShell client for Windows certificate import |
+| `scripts/windows/.env.example` | Configuration template for the Windows client |
 
 ---
 
@@ -248,6 +250,99 @@ echo "Password: ${PASSWORD}"
 | 403 | Invalid API key or secret |
 | 404 | .p12 file not found (run cert-to-p12.sh first) |
 | 500 | No API keys configured or server error |
+| 200 | .password file downloaded (with `&password=1`) |
+
+---
+
+## Windows Client Setup
+
+Automatically download and install the exported .p12 certificate into the
+Windows Local Machine certificate store (so IIS, SQL Server, or any Windows
+service can use it).
+
+### Requirements
+
+- **Windows 10 / Windows Server 2016+** (PowerShell 5.1+)
+- **Administrator privileges** (required for Local Machine certificate store)
+- The **OPNsense cert-export PHP handler** must be installed (see
+  [Manual Installation](#manual-installation) steps 3–4)
+- An **API key** created in **System → Access → Users** on the OPNsense
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `scripts/windows/install-cert.ps1` | PowerShell script that downloads and imports the certificate |
+| `scripts/windows/.env.example` | Template for the configuration file |
+
+### Setup
+
+1. Copy `scripts/windows/.env.example` to `scripts/windows/.env` (same
+   directory as the script).
+
+2. Edit `.env` with your OPNsense details:
+
+   ```ini
+   OPNSENSE_URL=https://192.168.1.1
+   API_KEY=your_api_key
+   API_SECRET=your_api_secret
+   CERT_NAME=webgui
+   SKIP_TLS_VERIFY=true
+   ```
+
+   > **Note about self-signed certificates:** OPNsense uses its own CA by
+   > default. Set `SKIP_TLS_VERIFY=true` to bypass certificate validation.
+   > For production, add your OPNsense CA to the Windows Trusted Root store
+   > instead.
+
+### Usage
+
+Open PowerShell **as Administrator** and run:
+
+```powershell
+.\scripts\windows\install-cert.ps1
+```
+
+Or specify a custom config path:
+
+```powershell
+.\scripts\windows\install-cert.ps1 -EnvFile C:\Config\my-opnsense.env
+```
+
+### What the script does
+
+1. Reads the `.env` configuration file
+2. Downloads `<CERT_NAME>.p12` from the OPNsense API via Basic auth
+3. Downloads `<CERT_NAME>.password` from the OPNsense API (`?password=1`)
+4. Imports the certificate into `Cert:\LocalMachine\My` (Personal store)
+5. Verifies the imported certificate matches the downloaded file
+
+The certificate is imported with the `-Exportable` flag so the private key can
+be re-exported if needed (e.g., for binding to additional services).
+
+### Re-running
+
+The script **always overwrites** the existing certificate in the store. Run it
+on a schedule (e.g., via Task Scheduler) to keep the Windows certificate in
+sync with daily OPNsense renewals:
+
+```powershell
+# Example Task Scheduler action:
+#   Program:   powershell.exe
+#   Arguments: -ExecutionPolicy Bypass -File "C:\scripts\install-cert.ps1"
+```
+
+### Adding the OPNsense CA to Windows (optional)
+
+If you prefer **not** to skip TLS verification:
+
+1. On OPNsense, go to **System → Trust → Authorities**
+2. Export your OPNsense CA certificate
+3. On Windows, run `certlm.msc` → Trusted Root Certification Authorities →
+   Certificates → right-click → All Tasks → Import
+4. Select the exported CA file
+
+Now set `SKIP_TLS_VERIFY=false` (or remove the line) in `.env`.
 
 ---
 
