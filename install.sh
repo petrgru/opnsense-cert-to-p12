@@ -38,8 +38,11 @@ download() {
         echo "ERROR: Failed to download $url (HTTP error)" >&2
         exit 1
     }
-    # Verify the file starts with the expected shebang (detect corrupted downloads)
-    if [ "$(head -c 2 "$dest" 2>/dev/null)" != "#!" ] && [ "$(head -c 5 "$dest" 2>/dev/null)" != "<?php" ]; then
+    # Verify the file starts with an expected header to detect corrupted downloads.
+    # Shell scripts begin with #!, PHP with <?php, INI-style configs with [.
+    if [ "$(head -c 2 "$dest" 2>/dev/null)" != "#!" ] \
+        && [ "$(head -c 5 "$dest" 2>/dev/null)" != "<?php" ] \
+        && [ "$(head -c 1 "$dest" 2>/dev/null)" != "[" ]; then
         echo "ERROR: Downloaded file $dest does not look valid (wrong content)" >&2
         exit 1
     fi
