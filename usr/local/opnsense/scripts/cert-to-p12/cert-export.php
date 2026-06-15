@@ -46,14 +46,32 @@ function loadApiKeys($configXml) {
     $xml = simplexml_load_file($configXml);
     if (!$xml || !isset($xml->user)) return $keys;
     foreach ($xml->user as $user) {
-        if (!isset($user->APIkey)) continue;
-        foreach ($user->APIkey as $apiKey) {
-            $k = (string)$apiKey->key;
-            $s = (string)$apiKey->secret;
-            if ($k && $s) $keys[$k] = $s;
+        // Format 1: <APIkey><key>...</key><secret>...</secret></APIkey> (newer)
+        if (isset($user->APIkey)) {
+            foreach ($user->APIkey as $apiKey) {
+                $k = (string)$apiKey->key;
+                $s = (string)$apiKey->secret;
+                if ($k && $s) $keys[$k] = $s;
+            }
+        }
+        // Format 2: <apikeys>key|hashed_secret</apikeys> (older/alternate)
+        if (isset($user->apikeys)) {
+            $parts = explode('|', (string)$user->apikeys, 2);
+            if (count($parts) === 2 && $parts[0] && $parts[1]) {
+                $keys[$parts[0]] = $parts[1];
+            }
         }
     }
     return $keys;
+}
+
+function verifySecret($stored, $plaintext) {
+    // If stored secret starts with '$' it's a SHA-512 crypt hash (e.g. $6$...)
+    if (strpos($stored, '$') === 0) {
+        return hash_equals($stored, crypt($plaintext, $stored));
+    }
+    // Plaintext comparison (legacy)
+    return hash_equals($stored, $plaintext);
 }
 
 function authenticate($keys) {
@@ -80,7 +98,7 @@ function authenticate($keys) {
         jsonError('Authentication required. Use Basic auth (API key:secret) or query params.', 401);
     }
 
-    if (!isset($keys[$apiKey]) || !hash_equals($keys[$apiKey], $apiSecret)) {
+    if (!isset($keys[$apiKey]) || !verifySecret($keys[$apiKey], $apiSecret)) {
         jsonError('Invalid API key or secret.', 403);
     }
 }
