@@ -90,39 +90,10 @@ function Parse-EnvFile {
 # ---------------------------------------------------------------------------
 # Download a file from OPNsense with Basic Auth
 #
-# PS 5.1 note: we bypass SSL validation using a compiled .NET method
-# because PowerShell ScriptBlocks ({ $true }) need a Runspace and fail on
-# background threads. A proper .NET delegate avoids this entirely.
-# ---------------------------------------------------------------------------
-
-function Set-TlsBypass_PS51 {
-    try {
-        $typeName = 'OmoSslValidator'
-        $existing = [System.Management.Automation.PSTypeName]$typeName
-        if (-not $existing.Type) {
-            Add-Type -TypeDefinition @'
-using System;
-using System.Net.Security;
-using System.Security.Cryptography.X509Certificates;
-public static class OmoSslValidator {
-    public static bool Validate(object sender, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors) {
-        return true;
-    }
-}
-'@ -ErrorAction Stop
-        }
-        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = [System.Net.Security.RemoteCertificateValidationCallback]OmoSslValidator.Validate
-    } catch {
-        Write-Warn "Could not install SSL bypass via Add-Type."
-        Write-Warn "Falling back to ScriptBlock method (may fail on some systems)."
-        Write-Warn "If you see a 'Runspace' error, upgrade to PowerShell 7 or add"
-        Write-Warn "the OPNsense CA to Windows Trusted Root store and set SKIP_TLS_VERIFY=false."
-        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-    }
-}
-
-# ---------------------------------------------------------------------------
-# Download a file from OPNsense with Basic Auth
+# PS 5.1 + SkipTlsVerify: we use curl.exe (bundled with Windows 10 1803+)
+# instead of Invoke-WebRequest. PowerShell ScriptBlocks used as SSL
+# callbacks ({ $true }) need a Runspace and fail on background threads.
+# curl.exe --insecure bypasses SSL natively with no runspace dependency.
 # ---------------------------------------------------------------------------
 
 function Invoke-OPNsenseDownload {
@@ -135,11 +106,53 @@ function Invoke-OPNsenseDownload {
         [switch]$SkipTlsVerify
     )
 
+    # -----------------------------------------------------------------------
+    # PS 5.1 + SkipTlsVerify: use curl.exe to avoid ScriptBlock runspace issue
+    # -----------------------------------------------------------------------
+    if ($SkipTlsVerify -and $PSVersionTable.PSVersion.Major -lt 6) {
+        Write-Warn "TLS certificate validation is DISABLED."
+
+        $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+        if (-not $curl) {
+            Write-ErrorAndExit "Cannot skip TLS validation on PowerShell $($PSVersionTable.PSVersion). " +
+                "Upgrade to PowerShell 7 (which supports -SkipCertificateCheck) " +
+                "or add the OPNsense CA to Windows Trusted Root store and set SKIP_TLS_VERIFY=false."
+        }
+
+        Write-Step "Downloading via curl.exe ..."
+        $argList = @('-sS', '--insecure', '-u', "${ApiKey}:${ApiSecret}", '-o', $OutFile, $Url)
+        & $curl.Path @argList
+        $exitCode = $LASTEXITCODE
+
+        if ($exitCode -eq 0 -and (Test-Path $OutFile)) {
+            $sizeBytes = (Get-Item $OutFile).Length
+            if ($sizeBytes -gt 0) {
+                Write-Success "Downloaded $Description -> $OutFile ($sizeBytes bytes)"
+                return
+            }
+        }
+
+        # curl failed - try to extract HTTP status from error output
+        if ($exitCode -eq 22) {
+            Write-ErrorAndExit "curl: HTTP error (check API_KEY, API_SECRET, and cert name)."
+        } elseif ($exitCode -eq 6) {
+            Write-ErrorAndExit "curl: Could not resolve host - check OPNSENSE_URL."
+        } elseif ($exitCode -eq 7) {
+            Write-ErrorAndExit "curl: Connection refused - check OPNSENSE_URL and port."
+        } elseif ($exitCode -eq 28) {
+            Write-ErrorAndExit "curl: Connection timed out - check OPNSENSE_URL."
+        } elseif ($exitCode -eq 35) {
+            Write-ErrorAndExit "curl: SSL connect error - check SKIP_TLS_VERIFY setting."
+        } else {
+            Write-ErrorAndExit "curl exited with code $exitCode (see https://curl.se/docs/manpage.html#EXIT)"
+        }
+    }
+
+    # -----------------------------------------------------------------------
+    # PS 6+ (with SkipCertificateCheck)  OR  any PS where TLS is NOT skipped
+    # -----------------------------------------------------------------------
     if ($SkipTlsVerify) {
         Write-Warn "TLS certificate validation is DISABLED."
-        if ($PSVersionTable.PSVersion.Major -lt 6) {
-            Set-TlsBypass_PS51
-        }
     }
 
     $authHeader = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${ApiKey}:${ApiSecret}"))
@@ -154,8 +167,8 @@ function Invoke-OPNsenseDownload {
             UseBasicParsing = $true
             ErrorAction     = 'Stop'
         }
-        if ($PSVersionTable.PSVersion.Major -ge 6) {
-            $params['SkipCertificateCheck'] = $SkipTlsVerify
+        if ($PSVersionTable.PSVersion.Major -ge 6 -and $SkipTlsVerify) {
+            $params['SkipCertificateCheck'] = $true
         }
 
         Invoke-WebRequest @params
@@ -180,11 +193,6 @@ function Invoke-OPNsenseDownload {
                 $errorMsg = $_.Exception.InnerException.Message
             }
             Write-ErrorAndExit "$errorType : $errorMsg"
-        }
-    } finally {
-        # Reset TLS callback if we changed it (PS 5.1)
-        if ($SkipTlsVerify -and $PSVersionTable.PSVersion.Major -lt 6) {
-            [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
         }
     }
 }
