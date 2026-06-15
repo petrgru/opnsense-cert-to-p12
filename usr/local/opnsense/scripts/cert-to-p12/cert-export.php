@@ -44,21 +44,30 @@ function loadApiKeys($configXml) {
     $keys = [];
     if (!file_exists($configXml)) return $keys;
     $xml = simplexml_load_file($configXml);
-    if (!$xml || !isset($xml->user)) return $keys;
-    foreach ($xml->user as $user) {
+    if (!$xml) return $keys;
+
+    // Use xpath to find all <user> elements (handles namespaces correctly)
+    $users = $xml->xpath('//user');
+    if (!$users) return $keys;
+
+    foreach ($users as $user) {
         // Format 1: <APIkey><key>...</key><secret>...</secret></APIkey> (newer)
-        if (isset($user->APIkey)) {
-            foreach ($user->APIkey as $apiKey) {
+        $apikeyNodes = $user->xpath('APIkey');
+        if ($apikeyNodes) {
+            foreach ($apikeyNodes as $apiKey) {
                 $k = (string)$apiKey->key;
                 $s = (string)$apiKey->secret;
                 if ($k && $s) $keys[$k] = $s;
             }
         }
         // Format 2: <apikeys>key|hashed_secret</apikeys> (older/alternate)
-        if (isset($user->apikeys)) {
-            $parts = explode('|', (string)$user->apikeys, 2);
-            if (count($parts) === 2 && $parts[0] && $parts[1]) {
-                $keys[$parts[0]] = $parts[1];
+        $apikeysNodes = $user->xpath('apikeys');
+        if ($apikeysNodes) {
+            foreach ($apikeysNodes as $apikeys) {
+                $parts = explode('|', (string)$apikeys, 2);
+                if (count($parts) === 2 && $parts[0] && $parts[1]) {
+                    $keys[$parts[0]] = $parts[1];
+                }
             }
         }
     }
