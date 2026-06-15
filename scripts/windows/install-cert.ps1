@@ -133,16 +133,24 @@ function Invoke-OPNsenseDownload {
         $sizeBytes = (Get-Item $OutFile).Length
         Write-Success "Downloaded $Description -> $OutFile ($sizeBytes bytes)"
     } catch {
-        $statusCode = $_.Exception.Response.StatusCode.value__
-        $statusDesc = $_.Exception.Response.StatusDescription
-        if ($statusCode -eq 401) {
-            Write-ErrorAndExit "Authentication failed (401). Check API_KEY and API_SECRET in .env."
-        } elseif ($statusCode -eq 403) {
-            Write-ErrorAndExit "Access denied (403). Verify API_KEY and API_SECRET are correct."
-        } elseif ($statusCode -eq 404) {
-            Write-ErrorAndExit "Certificate not found on server (404). Run cert-to-p12.sh on OPNsense first."
+        $response = $_.Exception.Response
+        if ($response) {
+            $statusCode = [int]$response.StatusCode
+            $statusDesc = $response.StatusDescription
+            switch ($statusCode) {
+                401 { Write-ErrorAndExit "Authentication failed (401). Check API_KEY and API_SECRET in .env." }
+                403 { Write-ErrorAndExit "Access denied (403). Verify API_KEY and API_SECRET are correct." }
+                404 { Write-ErrorAndExit "Certificate not found on server (404). Run cert-to-p12.sh on OPNsense first." }
+                default { Write-ErrorAndExit "HTTP $statusCode $statusDesc - $Url" }
+            }
         } else {
-            Write-ErrorAndExit "HTTP $statusCode $statusDesc - $Url"
+            # No HTTP response object - network error, DNS failure, timeout, SSL handshake failure
+            $errorMsg = $_.Exception.Message
+            $errorType = $_.Exception.GetType().Name
+            if ($_.Exception.InnerException) {
+                $errorMsg = $_.Exception.InnerException.Message
+            }
+            Write-ErrorAndExit "$errorType : $errorMsg"
         }
     } finally {
         # Reset TLS callback if we changed it (PS 5.1)
