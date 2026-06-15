@@ -311,12 +311,12 @@ Or specify a custom config path:
 
 1. Reads the `.env` configuration file
 2. Downloads `<CERT_NAME>.p12` from the OPNsense API via Basic auth
-3. Saves the file to the configured local directory (default: `C:\ProgramData\cert-to-p12`)
+3. Downloads `<CERT_NAME>.password` from the OPNsense API (`?password=1`)
+4. Saves both files to the configured local directory (default: `C:\ProgramData\cert-to-p12`)
 
 The script does **not** import the certificate into the Windows store. Use
 `certlm.msc` to import manually, or use `Import-PfxCertificate` in a follow-up
-script. The .p12 password is stored on the OPNsense server at
-`/root/cert-export/<CERT_NAME>.password`.
+script. The `.password` file contains the PKCS#12 passphrase needed for import.
 
 ### Re-running
 

@@ -254,12 +254,14 @@ if (-not (Test-Path $p12Dir)) {
 }
 
 # ---------------------------------------------------------------------------
-# Download .p12 file
+# Download .p12 and .password files
 # ---------------------------------------------------------------------------
 
-$p12File    = Join-Path $p12Dir "$certName.p12"
-$queryCert  = [System.Net.WebUtility]::UrlEncode($certName)
-$p12Url     = $opnsenseUrl + "/cert-export/?cert=" + $queryCert
+$p12File       = Join-Path $p12Dir "$certName.p12"
+$passwordFile  = Join-Path $p12Dir "$certName.password"
+$queryCert     = [System.Net.WebUtility]::UrlEncode($certName)
+$p12Url        = $opnsenseUrl + "/cert-export/?cert=" + $queryCert
+$passwordUrl   = $opnsenseUrl + "/cert-export/?cert=" + $queryCert + "&password=1"
 
 $commonParams = @{
     ApiKey       = $apiKey
@@ -270,8 +272,11 @@ $commonParams = @{
 Write-Step "Downloading .p12 file from OPNsense..."
 Invoke-OPNsenseDownload @commonParams -Url $p12Url -OutFile $p12File -Description "$certName.p12"
 
+Write-Step "Downloading .password file from OPNsense..."
+Invoke-OPNsenseDownload @commonParams -Url $passwordUrl -OutFile $passwordFile -Description "$certName.password"
+
 # ---------------------------------------------------------------------------
-# Verify downloaded file
+# Verify downloaded files
 # ---------------------------------------------------------------------------
 
 if (-not (Test-Path $p12File)) {
@@ -280,8 +285,16 @@ if (-not (Test-Path $p12File)) {
 if ((Get-Item $p12File).Length -eq 0) {
     Write-ErrorAndExit "Downloaded .p12 file is empty: $p12File"
 }
+if (-not (Test-Path $passwordFile)) {
+    Write-ErrorAndExit "Downloaded .password file not found at $passwordFile"
+}
+if ((Get-Item $passwordFile).Length -eq 0) {
+    Write-ErrorAndExit "Downloaded .password file is empty: $passwordFile"
+}
 
-Write-Success "Download verified: $((Get-Item $p12File).Length) bytes"
+$p12Size = (Get-Item $p12File).Length
+$pwSize  = (Get-Item $passwordFile).Length
+Write-Success "Files verified: $certName.p12 ($p12Size bytes), $certName.password ($pwSize bytes)"
 
 # ---------------------------------------------------------------------------
 # Summary
@@ -292,15 +305,18 @@ Write-Host "============================================" -ForegroundColor Cyan
 Write-Host " Download complete!" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  File : $p12File"
+Write-Host "  Certificate : $p12File"
+Write-Host "  Password    : $passwordFile"
 Write-Host ""
 Write-Host "  To import into Windows certificate store manually:"
 Write-Host "    1. Run certlm.msc"
 Write-Host "    2. Go to Personal -> Certificates"
 Write-Host "    3. Right-click -> All Tasks -> Import"
 Write-Host "    4. Select the .p12 file and enter the password"
-Write-Host "       (password file is stored alongside the .p12 on the OPNsense"
-Write-Host "       server at /root/cert-export/$certName.password)"
+Write-Host "       (from $passwordFile)"
+Write-Host ""
+Write-Host "  The password file is also needed if you re-export the"
+Write-Host "  certificate from Windows (the private key is protected)."
 Write-Host ""
 Write-Host "  To re-run with a different certificate, update CERT_NAME in .env"
 Write-Host "  and run this script again."
