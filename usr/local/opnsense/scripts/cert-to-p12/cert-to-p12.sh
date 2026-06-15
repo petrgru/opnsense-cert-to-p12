@@ -29,7 +29,7 @@ REQUIRED:
 OPTIONS:
   --password <pw>       Password to encrypt the .p12 file.
                         Auto-generated (32 chars) if omitted.
-  --outdir <dir>        Output directory (default: /root/cert-export).
+  --outdir <dir>        Output directory (default: /var/cert-export).
 
   --legacy              Add OpenSSL -legacy flag for compatibility with
                         older systems (Windows, Java 8, OpenSSL 1.x).
