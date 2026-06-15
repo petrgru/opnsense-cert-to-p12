@@ -47,11 +47,13 @@ function loadApiKeys($configXml) {
     if (!$xml) return $keys;
 
     // Use xpath to find all <user> elements (handles namespaces correctly)
+    // Note: <user> is at /opnsense/system/user, NOT at /opnsense/user
     $users = $xml->xpath('//user');
     if (!$users) return $keys;
 
     foreach ($users as $user) {
-        // Format 1: <APIkey><key>...</key><secret>...</secret></APIkey> (newer)
+        // Format 1: <APIkey><key>...</key><secret>...</secret></APIkey>
+        // Rare format, seen in some OPNsense versions
         $apikeyNodes = $user->xpath('APIkey');
         if ($apikeyNodes) {
             foreach ($apikeyNodes as $apiKey) {
@@ -60,13 +62,21 @@ function loadApiKeys($configXml) {
                 if ($k && $s) $keys[$k] = $s;
             }
         }
-        // Format 2: <apikeys>key|hashed_secret</apikeys> (older/alternate)
+
+        // Format 2 (OPNsense native — see ApiKeyField.php):
+        //   <apikeys>key1|$6$hash1
+        //   key2|$6$hash2</apikeys>
+        // Pipe-delimited text, multiple keys separated by newlines.
+        // Hash is crypt($raw_secret, '$6$') — SHA-512 with empty salt.
         $apikeysNodes = $user->xpath('apikeys');
         if ($apikeysNodes) {
             foreach ($apikeysNodes as $apikeys) {
-                $parts = explode('|', (string)$apikeys, 2);
-                if (count($parts) === 2 && $parts[0] && $parts[1]) {
-                    $keys[$parts[0]] = $parts[1];
+                $text = (string)$apikeys;
+                foreach (array_filter(explode("\n", $text)) as $line) {
+                    $parts = explode('|', $line, 2);
+                    if (count($parts) === 2 && $parts[0] && $parts[1]) {
+                        $keys[$parts[0]] = $parts[1];
+                    }
                 }
             }
         }
