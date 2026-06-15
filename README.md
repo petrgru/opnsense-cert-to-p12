@@ -256,23 +256,21 @@ echo "Password: ${PASSWORD}"
 
 ## Windows Client Setup
 
-Automatically download and install the exported .p12 certificate into the
-Windows Local Machine certificate store (so IIS, SQL Server, or any Windows
-service can use it).
+Download the exported .p12 certificate from OPNsense to any Windows machine
+using a simple PowerShell script. No administrator privileges required.
 
 ### Requirements
 
-- **Windows 10 / Windows Server 2016+** (PowerShell 5.1+)
-- **Administrator privileges** (required for Local Machine certificate store)
+- **Windows 7 / Windows Server 2012+** (PowerShell 5.1+)
 - The **OPNsense cert-export PHP handler** must be installed (see
-  [Manual Installation](#manual-installation) steps 3–4)
-- An **API key** created in **System → Access → Users** on the OPNsense
+  [Manual Installation](#manual-installation) steps 3-4)
+- An **API key** created in **System -> Access -> Users** on the OPNsense
 
 ### Files
 
 | File | Purpose |
 |------|---------|
-| `scripts/windows/install-cert.ps1` | PowerShell script that downloads and imports the certificate |
+| `scripts/windows/install-cert.ps1` | PowerShell script that downloads the .p12 certificate |
 | `scripts/windows/.env.example` | Template for the configuration file |
 
 ### Setup
@@ -297,7 +295,7 @@ service can use it).
 
 ### Usage
 
-Open PowerShell **as Administrator** and run:
+Open PowerShell and run:
 
 ```powershell
 .\scripts\windows\install-cert.ps1
@@ -313,18 +311,17 @@ Or specify a custom config path:
 
 1. Reads the `.env` configuration file
 2. Downloads `<CERT_NAME>.p12` from the OPNsense API via Basic auth
-3. Downloads `<CERT_NAME>.password` from the OPNsense API (`?password=1`)
-4. Imports the certificate into `Cert:\LocalMachine\My` (Personal store)
-5. Verifies the imported certificate matches the downloaded file
+3. Saves the file to the configured local directory (default: `C:\ProgramData\cert-to-p12`)
 
-The certificate is imported with the `-Exportable` flag so the private key can
-be re-exported if needed (e.g., for binding to additional services).
+The script does **not** import the certificate into the Windows store. Use
+`certlm.msc` to import manually, or use `Import-PfxCertificate` in a follow-up
+script. The .p12 password is stored on the OPNsense server at
+`/root/cert-export/<CERT_NAME>.password`.
 
 ### Re-running
 
-The script **always overwrites** the existing certificate in the store. Run it
-on a schedule (e.g., via Task Scheduler) to keep the Windows certificate in
-sync with daily OPNsense renewals:
+Run the script on a schedule (e.g., via Task Scheduler) to keep the local
+.p12 file in sync with daily OPNsense renewals:
 
 ```powershell
 # Example Task Scheduler action:
@@ -336,10 +333,10 @@ sync with daily OPNsense renewals:
 
 If you prefer **not** to skip TLS verification:
 
-1. On OPNsense, go to **System → Trust → Authorities**
+1. On OPNsense, go to **System -> Trust -> Authorities**
 2. Export your OPNsense CA certificate
-3. On Windows, run `certlm.msc` → Trusted Root Certification Authorities →
-   Certificates → right-click → All Tasks → Import
+3. On Windows, run `certlm.msc` -> Trusted Root Certification Authorities ->
+   Certificates -> right-click -> All Tasks -> Import
 4. Select the exported CA file
 
 Now set `SKIP_TLS_VERIFY=false` (or remove the line) in `.env`.
